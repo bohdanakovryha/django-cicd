@@ -1,0 +1,13 @@
+{% extends "pages/base.html" %}
+{% block title %}Головна — CI/CD Demo{% endblock %}
+{% block content %}
+<h1>Ласкаво просимо!</h1>
+<p>Це невеликий Django-сайт, для якого налаштовано CI/CD за допомогою GitHub Actions.</p>
+<ol class="pipeline">
+    <li>GitHub</li>
+    <li>Build</li>
+    <li>Testing</li>
+    <li>Docker Build</li>
+    <li>Docker Hub</li>
+</ol>
+{% endblock %}

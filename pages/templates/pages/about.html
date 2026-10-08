@@ -1,0 +1,14 @@
+{% extends "pages/base.html" %}
+{% block title %}Про проєкт — CI/CD Demo{% endblock %}
+{% block content %}
+<h1>Про проєкт</h1>
+<p>Після кожного push у гілку <code>main</code> GitHub Actions автоматично:</p>
+<ul>
+    <li>завантажує код із репозиторію;</li>
+    <li>встановлює залежності;</li>
+    <li>запускає тести;</li>
+    <li>якщо тести успішні — збирає Docker image;</li>
+    <li>відправляє image у Docker Hub;</li>
+    <li>запускає контейнер і перевіряє, що сайт відповідає.</li>
+</ul>
+{% endblock %}

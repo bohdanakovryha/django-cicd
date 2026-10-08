@@ -1,0 +1,108 @@
+name: CI/CD — Django → Docker Hub
+
+# GitHub → Build → Testing → Docker Build → Docker Hub → Launch and Testing
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/django-cicd-demo
+
+jobs:
+  # 1–3. Download the code, install the dependencies, and run the tests
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: Run tests
+        run: python manage.py test --verbosity 2
+
+  # 4–5. If the tests pass, build the image and push it to Docker Hub
+  docker:
+    name: Docker Build & Push
+    needs: build-and-test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # 6. Run the image from Docker Hub and verify that the website is working
+  smoke-test:
+    name: Run container & check site
+    needs: docker
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull image from Docker Hub
+        run: docker pull ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Run container
+        run: docker run -d --name django-app -p 8000:8000 ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Wait for the site to start
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:8000/health/ > /dev/null; then
+              echo "Site is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Site did not start in time"
+          docker logs django-app
+          exit 1
+
+      - name: Check pages
+        run: |
+          for path in / /about/ /contact/ /health/; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8000$path")
+            echo "$path -> $code"
+            [ "$code" = "200" ] || exit 1
+          done
+          curl -fs http://localhost:8000/static/pages/style.css > /dev/null && echo "static OK"
+
+      - name: Stop container
+        if: always()
+        run: |
+          docker logs django-app || true
+          docker rm -f django-app || true
